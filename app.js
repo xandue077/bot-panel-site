@@ -146,6 +146,25 @@
     });
   }
 
+  function bridgeLogin(token) {
+    return directBridge("/channels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token }),
+    }).then(function (result) {
+      if (result.status !== 200 || !result.data.ok) {
+        return {
+          status: result.status,
+          data: { ok: false, error: result.data.error || "Could not verify that token." },
+        };
+      }
+      return {
+        status: 200,
+        data: { ok: true, account: result.data.account, groups: result.data.groups || [] },
+      };
+    });
+  }
+
   function bridgePlay(payload) {
     return directBridge("/play", {
       method: "POST",
@@ -183,6 +202,17 @@
       show($("login-error"));
     }
     $("token").focus();
+  }
+
+  function signedIn(account) {
+    state.account = account;
+    hide($("boot"));
+    hide($("login"));
+    show($("app"));
+    renderAccount();
+    loadVoice();
+    renderSelected();
+    renderQueue();
   }
 
   function avatarUrl(account) {
@@ -533,10 +563,7 @@
 
   function choose(video) {
     state.selected = video;
-    var exists = state.queue.some(function (v) {
-      return v.id === video.id;
-    });
-    if (!exists) state.queue = state.queue.concat([video]);
+    state.queue = [video];
     hide($("play-msg"));
     renderResults();
     renderSelected();
@@ -569,15 +596,23 @@
     $("login-btn").disabled = true;
     setText($("login-label"), "Connecting…");
     state.token = token;
-    api("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token }),
-    })
+    var request = BRIDGE
+      ? bridgeLogin(token)
+      : api("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: token }),
+        });
+    request
       .then(function (result) {
         if (result.status === 200 && result.data.ok) {
           localStorage.setItem(TOKEN_KEY, token);
           $("token").value = "";
+          if (result.data.groups) {
+            state.groups = result.data.groups;
+            signedIn(result.data.account);
+            return;
+          }
           return loadSession();
         }
         state.token = null;
@@ -893,9 +928,24 @@
       return;
     }
     state.token = saved;
-    loadSession().catch(function () {
-      signedOut("Could not reach the API.");
-    });
+    if (!BRIDGE) {
+      loadSession().catch(function () {
+        signedOut("Could not reach the API.");
+      });
+      return;
+    }
+    bridgeLogin(saved)
+      .then(function (result) {
+        if (result.status !== 200 || !result.data.ok) {
+          signedOut(result.data.error || "");
+          return;
+        }
+        state.groups = result.data.groups;
+        signedIn(result.data.account);
+      })
+      .catch(function () {
+        signedOut("Could not reach the API.");
+      });
   }
 
   boot();
