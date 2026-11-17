@@ -69,12 +69,19 @@
               <p class="panel-sub">Every voice channel the account can reach, grouped by server.</p>
             </div>
           </div>
-          <label class="field" style="margin-bottom: 0">
-            <span>Channel the bot should join</span>
-            <select class="select" id="voice" disabled>
-              <option value="">Loading voice channels…</option>
-            </select>
-          </label>
+          <div class="voice-selected" id="voice-selected">
+            <div>
+              <div class="voice-selected-label">Selected channel</div>
+              <div class="voice-selected-name" id="voice-current">Loading voice channels…</div>
+            </div>
+            <button class="btn btn-ghost" id="voice-change" type="button">Change</button>
+          </div>
+
+          <div class="voice-picker hidden" id="voice-picker">
+            <input class="input" id="voice-search" placeholder="Search server or channel name…" autocomplete="off" spellcheck="false" />
+            <div class="voice-list" id="voice-list"></div>
+          </div>
+
           <p class="hint" id="voice-summary" style="margin-top: 10px"></p>
           <p class="hint hidden" id="no-guilds" style="margin-top: 6px">
             This account is in no server with a voice channel yet — invite the bot first.
@@ -152,6 +159,36 @@
           <div class="empty" id="no-selection">Nothing selected yet — search above or paste a link.</div>
         </section>
 
+        <section class="panel hidden" id="player">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Now playing</div>
+              <p class="panel-sub">Controls affect the live voice stream.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span class="chip" id="player-state">connecting…</span>
+              <button class="btn btn-ghost" id="player-stop" type="button">Stop</button>
+            </div>
+          </div>
+
+          <p class="now-title" id="player-title" style="margin-bottom: 14px"></p>
+
+          <div class="player-row">
+            <button class="btn btn-primary player-toggle" id="player-toggle" type="button">Pause</button>
+            <span class="time" id="player-cur">0:00</span>
+            <input class="range" id="player-seek" type="range" min="0" max="100" value="0" aria-label="Seek" />
+            <span class="time" id="player-dur">0:00</span>
+          </div>
+
+          <div class="player-row">
+            <span class="time">Volume</span>
+            <input class="range" id="player-volume" type="range" min="0" max="200" value="100" aria-label="Volume" />
+            <span class="time" id="player-vol-label">100%</span>
+          </div>
+
+          <p class="hint hidden" id="player-error" style="margin-top: 12px"></p>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <div>
@@ -166,7 +203,7 @@
       </main>
     </div>
 
-    <script src="./config.js?v=20261117b"></script>
-    <script src="./app.js?v=20261117b"></script>
+    <script src="./config.js?v=20261117c"></script>
+    <script src="./app.js?v=20261117c"></script>
   </body>
 </html>

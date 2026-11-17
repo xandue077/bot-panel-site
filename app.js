@@ -18,6 +18,13 @@
     selected: null,
     queue: [],
     busy: false,
+    voiceQuery: "",
+    voiceOpen: false,
+    playing: false,
+    playerPaused: false,
+    seeking: false,
+    statusTimer: null,
+    volumeTimer: null,
   };
 
   var $ = function (id) {
@@ -115,6 +122,7 @@
   }
 
   function signedOut(message) {
+    hidePlayer();
     state.token = null;
     state.account = null;
     state.groups = [];
@@ -155,44 +163,159 @@
     }
   }
 
+  function findVoice(guildId, channelId) {
+    for (var i = 0; i < state.groups.length; i += 1) {
+      var group = state.groups[i];
+      if (group.id !== guildId) continue;
+      for (var j = 0; j < group.channels.length; j += 1) {
+        if (group.channels[j].id === channelId) return { group: group, channel: group.channels[j] };
+      }
+    }
+    return null;
+  }
+
+  function voiceLabel(group, channel) {
+    return group.name + " · " + channel.name;
+  }
+
+  function rememberVoice() {
+    try {
+      localStorage.setItem(
+        "botpanel.voice.recent",
+        JSON.stringify({ guildId: state.guildId, channelId: state.channelId }),
+      );
+    } catch (e) {
+      /* localStorage may be unavailable */
+    }
+  }
+
+  function restoreVoice() {
+    var raw;
+    try {
+      raw = localStorage.getItem("botpanel.voice.recent");
+    } catch (e) {
+      return;
+    }
+    if (!raw) return;
+    try {
+      var recent = JSON.parse(raw);
+      var found = findVoice(recent.guildId, recent.channelId);
+      if (found && found.channel.type !== 13) {
+        state.guildId = recent.guildId;
+        state.channelId = recent.channelId;
+      }
+    } catch (e) {
+      /* ignore malformed recent channel */
+    }
+  }
+
   function renderVoice(loading) {
-    var select = $("voice");
-    select.innerHTML = "";
-    var placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = loading ? "Loading voice channels…" : "Choose a voice channel…";
-    select.appendChild(placeholder);
+    var current = findVoice(state.guildId, state.channelId);
+    setText(
+      $("voice-current"),
+      loading
+        ? "Loading voice channels…"
+        : current
+        ? voiceLabel(current.group, current.channel)
+        : "No channel selected — pick one below."
+    );
 
-    state.groups.forEach(function (group) {
-      var optgroup = document.createElement("optgroup");
-      optgroup.label = group.name;
-      group.channels.forEach(function (channel) {
-        var option = document.createElement("option");
-        option.value = group.id + ":" + channel.id;
-        option.textContent = (channel.type === 13 ? "Stage · " : "#") + channel.name;
-        optgroup.appendChild(option);
-      });
-      select.appendChild(optgroup);
-    });
+    var picker = $("voice-picker");
+    var change = $("voice-change");
+    if (loading) {
+      hide(picker);
+      change.disabled = true;
+      setText($("voice-summary"), "Reading servers…");
+      return;
+    }
 
-    select.disabled = loading || state.groups.length === 0;
-    select.value = state.guildId && state.channelId ? state.guildId + ":" + state.channelId : "";
+    change.disabled = false;
+    setText(change, state.voiceOpen ? "Done" : "Change");
+    if (state.voiceOpen) show(picker);
+    else hide(picker);
 
     var total = state.groups.reduce(function (sum, group) {
       return sum + group.channels.length;
     }, 0);
     setText(
       $("voice-summary"),
-      loading
-        ? "Reading servers…"
-        : state.groups.length === 0
+      state.groups.length === 0
         ? ""
         : state.groups.length + " server" + (state.groups.length === 1 ? "" : "s") + " · " + total + " voice channel" + (total === 1 ? "" : "s")
     );
-    if (!loading) {
-      if (state.groups.length === 0) show($("no-guilds"));
-      else hide($("no-guilds"));
+    if (state.groups.length === 0) show($("no-guilds"));
+    else hide($("no-guilds"));
+
+    var list = $("voice-list");
+    list.innerHTML = "";
+    var query = state.voiceQuery.trim().toLowerCase();
+    var foundAny = false;
+
+    state.groups.forEach(function (group) {
+      var channels = group.channels.filter(function (channel) {
+        return (
+          !query ||
+          group.name.toLowerCase().indexOf(query) >= 0 ||
+          channel.name.toLowerCase().indexOf(query) >= 0
+        );
+      });
+      if (channels.length === 0) return;
+      foundAny = true;
+
+      var heading = document.createElement("div");
+      heading.className = "voice-group";
+      heading.textContent = group.name;
+      list.appendChild(heading);
+
+      channels.forEach(function (channel) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className =
+          "voice-item" +
+          (group.id === state.guildId && channel.id === state.channelId ? " active" : "");
+        button.setAttribute("data-guild", group.id);
+        button.setAttribute("data-channel", channel.id);
+        button.disabled = channel.type === 13;
+
+        var body = document.createElement("div");
+        var name = document.createElement("div");
+        name.className = "voice-channel";
+        name.textContent = channel.name;
+        var server = document.createElement("div");
+        server.className = "voice-server";
+        server.textContent = group.name;
+        body.appendChild(name);
+        body.appendChild(server);
+
+        var tag = document.createElement("span");
+        tag.className = "voice-tag";
+        tag.textContent = channel.type === 13 ? "stage" : group.id === state.guildId && channel.id === state.channelId ? "selected" : "join";
+        button.appendChild(body);
+        button.appendChild(tag);
+        list.appendChild(button);
+      });
+    });
+
+    if (!foundAny) {
+      var empty = document.createElement("div");
+      empty.className = "voice-empty";
+      empty.textContent = query ? "No channels match “" + state.voiceQuery + "”." : "No voice channels available.";
+      list.appendChild(empty);
     }
+  }
+
+  function selectVoice(guildId, channelId) {
+    var found = findVoice(guildId, channelId);
+    if (!found || found.channel.type === 13) return;
+    state.guildId = guildId;
+    state.channelId = channelId;
+    state.voiceOpen = false;
+    state.voiceQuery = "";
+    $("voice-search").value = "";
+    rememberVoice();
+    hide($("play-msg"));
+    renderVoice(false);
+    updatePlayState();
   }
 
   function loadVoice() {
@@ -204,6 +327,7 @@
           return;
         }
         state.groups = result.status === 200 && result.data.ok ? result.data.groups || [] : [];
+        restoreVoice();
         renderVoice(false);
         updatePlayState();
       })
@@ -459,6 +583,104 @@
       });
   }
 
+  function formatTime(seconds) {
+    var total = Math.max(0, Math.floor(Number(seconds) || 0));
+    var minutes = Math.floor(total / 60);
+    var rest = total % 60;
+    return minutes + ":" + (rest < 10 ? "0" : "") + rest;
+  }
+
+  function showPlayer(label) {
+    if (!BRIDGE) return;
+    setText($("player-title"), label || (state.selected ? state.selected.title : "Live stream"));
+    setText($("player-state"), "connecting…");
+    setText($("player-cur"), "0:00");
+    setText($("player-dur"), "--:--");
+    setText($("player-toggle"), "Pause");
+    setText($("player-vol-label"), Math.round(($("player-volume").value / 100) * 100) + "%");
+    hide($("player-error"));
+    show($("player"));
+    state.playing = true;
+    pollStatus();
+    if (!state.statusTimer) state.statusTimer = setInterval(pollStatus, 1200);
+  }
+
+  function hidePlayer() {
+    state.playing = false;
+    state.playerPaused = false;
+    state.seeking = false;
+    hide($("player"));
+    if (state.statusTimer) {
+      clearInterval(state.statusTimer);
+      state.statusTimer = null;
+    }
+    if (state.volumeTimer) {
+      clearTimeout(state.volumeTimer);
+      state.volumeTimer = null;
+    }
+  }
+
+  function pollStatus() {
+    if (!BRIDGE || !state.playing) return Promise.resolve(null);
+    return directBridge("/status")
+      .then(function (result) {
+        if (result.status !== 200 || !result.data.ok) return null;
+        var status = result.data;
+        if (!status.playing) {
+          hidePlayer();
+          return status;
+        }
+
+        state.playerPaused = Boolean(status.paused);
+        setText($("player-state"), status.paused ? "paused" : status.starting ? "resolving…" : "playing");
+        setText($("player-title"), status.label || $("player-title").textContent);
+        setText($("player-cur"), formatTime(status.position));
+        setText($("player-dur"), status.duration ? formatTime(status.duration) : "--:--");
+        setText($("player-toggle"), status.paused ? "Resume" : "Pause");
+        setText($("player-vol-label"), Math.round((status.volume || 0) * 100) + "%");
+
+        var seek = $("player-seek");
+        var max = status.duration || Math.max(120, status.position + 60);
+        seek.max = String(max);
+        if (!state.seeking) seek.value = String(Math.min(status.position, max));
+        $("player-volume").value = String(Math.round((status.volume || 0) * 100));
+
+        if (status.lastError) {
+          setText($("player-error"), status.lastError);
+          show($("player-error"));
+        } else {
+          hide($("player-error"));
+        }
+        return status;
+      })
+      .catch(function () {
+        setText($("player-state"), "bridge offline");
+        return null;
+      });
+  }
+
+  function sendControl(action, extra) {
+    if (!BRIDGE) return Promise.resolve(null);
+    var body = Object.assign({ action: action }, extra || {});
+    return directBridge("/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (result) {
+      if (result.status !== 200 || !result.data.ok) {
+        setText($("player-error"), result.data.error || "Control failed.");
+        show($("player-error"));
+        return null;
+      }
+      hide($("player-error"));
+      return result.data;
+    }).catch(function () {
+      setText($("player-error"), "Network error while controlling playback.");
+      show($("player-error"));
+      return null;
+    });
+  }
+
   function play() {
     if (!state.selected || !state.guildId || !state.channelId) return;
     state.busy = true;
@@ -483,9 +705,11 @@
         if (result.status === 200 && result.data.ok) {
           message.className = "alert alert-ok";
           message.textContent = "Sent to the bot — joining the voice channel.";
+          showPlayer(result.data.label || (state.selected ? state.selected.title : "Live stream"));
         } else {
           message.className = "alert alert-error";
           message.textContent = result.data.error || "The bot refused the request.";
+          hidePlayer();
         }
         show(message);
       })
@@ -493,6 +717,7 @@
         var message = $("play-msg");
         message.className = "alert alert-error";
         message.textContent = "Network error while contacting the bot.";
+        hidePlayer();
         show(message);
       })
       .then(function () {
@@ -531,13 +756,54 @@
       if (LINK_RE.test($("query").value.trim())) show($("link-chip"));
       else hide($("link-chip"));
     });
-    $("voice").addEventListener("change", function (event) {
-      var parts = event.target.value.split(":");
-      state.guildId = parts[0] || "";
-      state.channelId = parts[1] || "";
-      hide($("play-msg"));
-      updatePlayState();
+    $("voice-search").addEventListener("input", function () {
+      state.voiceQuery = this.value;
+      renderVoice(false);
     });
+    $("voice-change").addEventListener("click", function () {
+      state.voiceOpen = !state.voiceOpen;
+      renderVoice(false);
+      if (state.voiceOpen) $("voice-search").focus();
+    });
+    $("voice-list").addEventListener("click", function (event) {
+      var item = event.target.closest(".voice-item");
+      if (!item || item.disabled) return;
+      selectVoice(item.getAttribute("data-guild"), item.getAttribute("data-channel"));
+    });
+
+    $("player-toggle").addEventListener("click", function () {
+      var action = state.playerPaused ? "resume" : "pause";
+      setText($("player-state"), action === "pause" ? "pausing…" : "resuming…");
+      sendControl(action).then(function () {
+        return pollStatus();
+      });
+    });
+    $("player-stop").addEventListener("click", function () {
+      sendControl("stop").then(function () {
+        hidePlayer();
+      });
+    });
+    $("player-seek").addEventListener("input", function () {
+      state.seeking = true;
+      setText($("player-cur"), formatTime(this.value));
+    });
+    $("player-seek").addEventListener("change", function () {
+      var seconds = Number(this.value);
+      sendControl("seek", { seconds: seconds }).then(function () {
+        state.seeking = false;
+        return pollStatus();
+      });
+    });
+    $("player-volume").addEventListener("input", function () {
+      var percent = Number(this.value);
+      setText($("player-vol-label"), percent + "%");
+      if (state.volumeTimer) clearTimeout(state.volumeTimer);
+      state.volumeTimer = setTimeout(function () {
+        state.volumeTimer = null;
+        sendControl("volume", { volume: percent / 100 });
+      }, 250);
+    });
+
     $("play").addEventListener("click", play);
     $("queue-clear").addEventListener("click", function () {
       state.queue = [];
