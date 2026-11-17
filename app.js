@@ -42,6 +42,28 @@
     el.textContent = text;
   }
 
+  function placeholderThumb(title) {
+    var label = String(title || "video").replace(/[<>&"]/g, "").slice(0, 34);
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">' +
+      '<rect width="320" height="180" fill="#131c33"/>' +
+      '<circle cx="160" cy="76" r="28" fill="#1e2a45"/>' +
+      '<path d="M151 62l22 14-22 14z" fill="#5b8cff"/>' +
+      '<text x="160" y="138" fill="#94a3c4" font-family="sans-serif" font-size="14" text-anchor="middle">' +
+      label +
+      "</text></svg>";
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
+
+  function setThumb(img, src, title) {
+    var fallback = placeholderThumb(title);
+    img.onerror = function () {
+      img.onerror = null;
+      img.src = fallback;
+    };
+    img.src = src || fallback;
+  }
+
   function api(path, options) {
     var opts = options || {};
     var headers = Object.assign({}, opts.headers || {});
@@ -379,7 +401,7 @@
 
         var img = document.createElement("img");
         img.className = "thumb";
-        img.src = video.thumb;
+        setThumb(img, video.thumb, video.title);
         img.alt = "";
         img.loading = "lazy";
 
@@ -429,7 +451,7 @@
     }
     hide($("no-selection"));
     show($("selected"));
-    $("sel-thumb").src = video.thumb;
+    setThumb($("sel-thumb"), video.thumb, video.title);
     $("sel-thumb").alt = "";
     setText($("sel-title"), video.title);
     setText($("sel-channel"), video.channel);
