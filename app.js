@@ -108,6 +108,22 @@
       });
   }
 
+  function bridgeChannels() {
+    return directBridge("/channels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: state.token }),
+    }).then(function (result) {
+      if (result.status !== 200 || !result.data.ok) {
+        return {
+          status: result.status,
+          data: { ok: false, error: result.data.error || "Could not list voice channels." },
+        };
+      }
+      return { status: 200, data: result.data };
+    });
+  }
+
   function bridgePlay(payload) {
     return directBridge("/play", {
       method: "POST",
@@ -320,7 +336,18 @@
 
   function loadVoice() {
     renderVoice(true);
-    return api("/api/voice")
+    var request = BRIDGE
+      ? bridgeChannels().then(function (result) {
+          if (result.status === 200 && result.data.ok && (result.data.groups || []).length > 0) {
+            return result;
+          }
+          return api("/api/voice");
+        }).catch(function () {
+          return api("/api/voice");
+        })
+      : api("/api/voice");
+
+    return request
       .then(function (result) {
         if (result.status === 401) {
           signedOut("Session expired. Sign in again.");
