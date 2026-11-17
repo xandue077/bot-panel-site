@@ -601,6 +601,8 @@
     hide($("player-error"));
     show($("player"));
     state.playing = true;
+    state.playerPaused = false;
+    state.seeking = false;
     pollStatus();
     if (!state.statusTimer) state.statusTimer = setInterval(pollStatus, 1200);
   }
@@ -637,13 +639,17 @@
         setText($("player-cur"), formatTime(status.position));
         setText($("player-dur"), status.duration ? formatTime(status.duration) : "--:--");
         setText($("player-toggle"), status.paused ? "Resume" : "Pause");
-        setText($("player-vol-label"), Math.round((status.volume || 0) * 100) + "%");
+        if (!state.volumeTimer) {
+          setText($("player-vol-label"), Math.round((status.volume || 0) * 100) + "%");
+        }
 
         var seek = $("player-seek");
         var max = status.duration || Math.max(120, status.position + 60);
         seek.max = String(max);
         if (!state.seeking) seek.value = String(Math.min(status.position, max));
-        $("player-volume").value = String(Math.round((status.volume || 0) * 100));
+        if (!state.volumeTimer) {
+          $("player-volume").value = String(Math.round((status.volume || 0) * 100));
+        }
 
         if (status.lastError) {
           setText($("player-error"), status.lastError);
