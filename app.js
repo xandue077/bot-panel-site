@@ -39,7 +39,6 @@
     var opts = options || {};
     var headers = Object.assign({}, opts.headers || {});
     if (state.token) headers["x-bot-token"] = state.token;
-    if (BRIDGE) headers["x-bot-bridge-url"] = BRIDGE;
     return fetch(API + path, {
       method: opts.method || "GET",
       headers: headers,
