@@ -2,6 +2,7 @@
   "use strict";
 
   var API = (window.BOTPANEL_API || "").replace(/\/+$/, "");
+  var BRIDGE = (window.BOTPANEL_BRIDGE_URL || "").replace(/\/+$/, "");
   var TOKEN_KEY = "botpanel.token";
   var LINK_RE = /^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i;
 
@@ -38,6 +39,7 @@
     var opts = options || {};
     var headers = Object.assign({}, opts.headers || {});
     if (state.token) headers["x-bot-token"] = state.token;
+    if (BRIDGE) headers["x-bot-bridge-url"] = BRIDGE;
     return fetch(API + path, {
       method: opts.method || "GET",
       headers: headers,
