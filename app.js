@@ -57,6 +57,64 @@
     });
   }
 
+  function directBridge(path, options) {
+    var opts = options || {};
+    return fetch(BRIDGE + path, {
+      method: opts.method || "GET",
+      headers: opts.headers || {},
+      body: opts.body,
+      cache: "no-store",
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return { ok: false, error: "Unexpected response from the bridge." };
+        }).then(function (data) {
+          return { status: res.status, data: data };
+        });
+      });
+  }
+
+  function bridgeSearch(query) {
+    return directBridge("/search?source=kisskh&q=" + encodeURIComponent(query))
+      .then(function (result) {
+        if (result.status !== 200 || !result.data.ok) {
+          return { status: result.status, data: { ok: false, error: result.data.error || "Movie search failed." } };
+        }
+        return {
+          status: 200,
+          data: {
+            ok: true,
+            mode: "search",
+            items: (result.data.items || []).map(function (item) {
+              return {
+                id: item.id || "",
+                title: item.title,
+                year: item.year || "",
+                thumb: item.thumb || "",
+                source: "kisskh",
+                episodes: item.episodes || 0,
+                channel: item.episodes > 1 ? item.episodes + " episodes" : item.year || "Movie",
+                url: "https://kisskh.do/Search?q=" + encodeURIComponent(item.title),
+              };
+            }),
+          },
+        };
+      });
+  }
+
+  function bridgePlay(payload) {
+    return directBridge("/play", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({}, payload, { token: state.token, auth: "user" })),
+    }).then(function (result) {
+      if (result.status !== 200 || !result.data.ok) {
+        return { status: result.status, data: { ok: false, error: result.data.error || "The bot refused the request." } };
+      }
+      return { status: 200, data: result.data };
+    });
+  }
+
   function signedOut(message) {
     state.token = null;
     state.account = null;
@@ -367,7 +425,10 @@
     $("search-btn").disabled = true;
     setText($("search-label"), "Searching…");
     state.busy = true;
-    api("/api/search?source=" + encodeURIComponent(state.source) + "&q=" + encodeURIComponent(query))
+    var searchRequest = BRIDGE && state.source === "kisskh"
+      ? bridgeSearch(query)
+      : api("/api/search?source=" + encodeURIComponent(state.source) + "&q=" + encodeURIComponent(query));
+    searchRequest
       .then(function (result) {
         if (result.status === 401) {
           signedOut("Session expired. Sign in again.");
@@ -405,17 +466,19 @@
     hide($("play-msg"));
     $("play").disabled = true;
     setText($("play-label"), "Sending…");
-    api("/api/play", {
+    var payload = {
+      guildId: state.guildId,
+      channelId: state.channelId,
+      source: state.selected.source || "youtube",
+      url: state.selected.url,
+      title: state.selected.title,
+    };
+    var playRequest = BRIDGE ? bridgePlay(payload) : api("/api/play", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        guildId: state.guildId,
-        channelId: state.channelId,
-        source: state.selected.source || "youtube",
-        url: state.selected.url,
-        title: state.selected.title,
-      }),
-    })
+      body: JSON.stringify(payload),
+    });
+    playRequest
       .then(function (result) {
         var message = $("play-msg");
         if (result.status === 200 && result.data.ok) {
