@@ -159,6 +159,16 @@
     });
   }
 
+  function bridgeStop() {
+    if (!BRIDGE || !state.token) return;
+    var token = state.token;
+    directBridge("/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stop", token: token }),
+    }).catch(function () {});
+  }
+
   function signedOut(message) {
     hidePlayer();
     state.token = null;
@@ -868,6 +878,7 @@
       renderResults();
     });
     $("logout").addEventListener("click", function () {
+      bridgeStop();
       api("/api/logout", { method: "POST" }).catch(function () {});
       signedOut("");
       hide($("login-error"));
