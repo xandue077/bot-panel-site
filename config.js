@@ -1,0 +1,2 @@
+// Base URL of the API deployment (Next.js app with the Discord/YouTube routes).
+window.BOTPANEL_API = "https://krizz-bot.vercel.app";
