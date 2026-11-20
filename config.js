@@ -1,3 +1,3 @@
 // Base URL of the API deployment (Next.js app with the Discord/YouTube routes).
 window.BOTPANEL_API = "https://krizz-bot.vercel.app";
-window.BOTPANEL_BRIDGE_URL = "https://bread-ave-decided-contacting.trycloudflare.com";
+window.BOTPANEL_BRIDGE_URL = "https://pound-watching-while-whats.trycloudflare.com";
